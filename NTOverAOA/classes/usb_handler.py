@@ -13,11 +13,14 @@ if sys.platform == "win32":
 else:
     DLL_PATH = None
 
-from .aoa import find_accessory, find_device, toggle_accessory_mode
-
-# AOA vendor and product id stuff
-ACCESSORY_VID = 0x18D1
-ACCESSORY_PIDS = (0x2D00, 0x2D01, 0x2D04, 0x2D05)
+from .aoa import (
+    ACCESSORY_PIDS,
+    ACCESSORY_VID,
+    find_accessory,
+    find_device,
+    is_accessory_id,
+    toggle_accessory_mode,
+)
 
 # USB device/interface classes that an Android Accessory target would never
 # expose, used to rule out webcams, Bluetooth chips, hubs, and other noise.
@@ -161,7 +164,7 @@ class USBHandler:
         return False
 
     def is_android_device(self, dev):
-        if dev.idVendor == ACCESSORY_VID and dev.idProduct in ACCESSORY_PIDS:
+        if is_accessory_id(dev.idVendor, dev.idProduct):
             # AOA IDs bypass the class filter on purpose: 2D04/2D05 legitimately
             # add an Audio interface while still being valid targets.
             return True
@@ -175,7 +178,6 @@ class USBHandler:
         self.init_backend()
 
         known = []
-        others = []
 
         try:
             for dev in usb.core.find(find_all=True, backend=self._usb_backend):
@@ -198,16 +200,11 @@ class USBHandler:
 
                 if self.is_android_device(dev):
                     known.append(entry)
-                else:
-                    others.append(entry)
 
         except Exception as e:  # noqa: BLE001 - normalize backend errors for callers
             raise RuntimeError(f"USB enumeration failed: {e}")
 
-        if known:
-            return known
-
-        return others
+        return known
 
     def _serial_number(self, dev):
         try:
@@ -420,6 +417,14 @@ class USBHandler:
         )
 
         if any(word in low for word in keywords):
-            return message + " - WinUSB driver not bound to accessory-mode "
+            accessory = ", ".join(
+                f"{ACCESSORY_VID:04x}:{pid:04x}" for pid in ACCESSORY_PIDS
+            )
+            return (
+                message
+                + " - WinUSB driver not bound to accessory-mode "
+                + f"({accessory}). Open the Setup tab, pick this device under"
+                + " Install USB Driver, and click Install Driver."
+            )
 
         return message

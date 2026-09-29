@@ -12,7 +12,7 @@ except Exception:  # noqa: BLE001 - import raises NoImplementationFoundException
     crossfiledialog = None
 import usb.core
 
-from classes.apk_installer import install_apk
+from classes.apk_installer import install_apk, list_adb_targets
 from classes.bridge import NTOverUSBBridge
 from classes.robot_ip import DriverStationInterop
 
@@ -29,14 +29,18 @@ if sys.platform == "win32":
     from classes.winusb_installer import (
         _handle_elevated_winusb_install,
         _run_elevated_winusb_install,
+        list_driver_targets,
     )
 else:
 
-    def _run_elevated_winusb_install(vid, pid, description):
+    def _run_elevated_winusb_install(device_id):
         raise RuntimeError("WinUSB driver installation is only available on Windows")
 
     def _handle_elevated_winusb_install(request_path, result_path):
         raise RuntimeError("WinUSB driver installation is only available on Windows")
+
+    def list_driver_targets():
+        return []
 
 
 def _resource_path(*parts):
@@ -98,6 +102,8 @@ class TKApp:
         self.ds = DriverStationInterop(on_update=self._on_ds_ip)
         self.usb_var = tk.StringVar()
         self.apk_var = tk.StringVar()
+        self.apk_usb_var = tk.StringVar()
+        self.driver_usb_var = tk.StringVar()
         self.connected = False
         self._connecting = False
         self.usb_state = ConnectionState.DISCONNECTED
@@ -105,6 +111,8 @@ class TKApp:
 
         self._install_thread = None
         self._driver_install_thread = None
+        self.apk_usb_combo = None
+        self.driver_usb_combo = None
         self.driver_install_btn = None
         self._install_lock = threading.Lock()
 
@@ -116,12 +124,16 @@ class TKApp:
         self.usb = self.bridge.usb
 
         self._candidates = []
+        self._apk_targets = []
+        self._driver_targets = []
         self._sub_info = {}
 
         self._make_ui()
         if sys.platform == "win32":
             self.ds.start()
         self._rescan_for_usb_devices()
+        self._rescan_for_apk_targets()
+        self._rescan_for_driver_targets()
 
     def _make_ui(self):
         main = ttk.Frame(self.root, padding="8")
@@ -196,7 +208,8 @@ class TKApp:
                 width=14,
                 height=14,
                 highlightthickness=0,
-                bg=self.style.lookup("TFrame", "background") or self.root.cget("background"),
+                bg=self.style.lookup("TFrame", "background")
+                or self.root.cget("background"),
             )
             indicator.pack(side=tk.LEFT, padx=(2, 6))
             dot = indicator.create_oval(
@@ -252,6 +265,7 @@ class TKApp:
 
         setup_tab = ttk.Frame(self.notebook, padding="8")
         self.notebook.add(setup_tab, text="Setup")
+        self.setup_tab = setup_tab
 
         apk_frame = ttk.LabelFrame(setup_tab, text="Install APK", padding="8")
         apk_frame.pack(fill=tk.X, pady=(0, 8))
@@ -274,9 +288,33 @@ class TKApp:
             command=self._choose_apk,
         ).pack(side=tk.LEFT, padx=(6, 0))
 
+        row = ttk.Frame(apk_frame)
+        row.pack(fill=tk.X, pady=(8, 0))
+
+        ttk.Label(row, text="ADB Device:", width=12).pack(side=tk.LEFT)
+
+        self.apk_usb_combo = ttk.Combobox(
+            row,
+            textvariable=self.apk_usb_var,
+            width=32,
+            state="readonly",
+        )
+        self.apk_usb_combo.pack(side=tk.LEFT)
+        self._fix_combobox_highlight(self.apk_usb_combo)
+        self.apk_usb_combo.bind(
+            "<<ComboboxSelected>>", lambda _event: self._sync_apk_install_button()
+        )
+
+        ttk.Button(
+            row,
+            text="Refresh",
+            command=self._rescan_for_apk_targets,
+            width=8,
+        ).pack(side=tk.LEFT, padx=(6, 0))
+
         self.apk_install_btn = ttk.Button(
             apk_frame,
-            text="Select an APK",
+            text="Install",
             command=self._install_apk,
             state=tk.DISABLED,
         )
@@ -295,10 +333,35 @@ class TKApp:
                 text="Replace the selected device driver with WinUSB.",
             ).pack(anchor=tk.W)
 
+            row = ttk.Frame(driver_frame)
+            row.pack(fill=tk.X, pady=(8, 0))
+
+            ttk.Label(row, text="USB Device:", width=12).pack(side=tk.LEFT)
+
+            self.driver_usb_combo = ttk.Combobox(
+                row,
+                textvariable=self.driver_usb_var,
+                width=32,
+                state="readonly",
+            )
+            self.driver_usb_combo.pack(side=tk.LEFT)
+            self._fix_combobox_highlight(self.driver_usb_combo)
+            self.driver_usb_combo.bind(
+                "<<ComboboxSelected>>", self._sync_driver_install_button
+            )
+
+            ttk.Button(
+                row,
+                text="Refresh",
+                command=self._rescan_for_driver_targets,
+                width=8,
+            ).pack(side=tk.LEFT, padx=(6, 0))
+
             self.driver_install_btn = ttk.Button(
                 driver_frame,
                 text="Install Driver",
                 command=self._install_winusb,
+                state=tk.DISABLED,
             )
             self.driver_install_btn.pack(anchor=tk.W, pady=(8, 0))
 
@@ -333,6 +396,8 @@ class TKApp:
 
         self.sub_listbox.configure(yscrollcommand=sub_sb.set)
 
+        self.notebook.bind("<<NotebookTabChanged>>", self._on_tab_changed)
+
     def _rescan_for_usb_devices(self):
         try:
             candidates = self.bridge.find_options()
@@ -347,6 +412,82 @@ class TKApp:
             self.usb_var.set(candidates[0][2])
         else:
             self.usb_var.set("")
+
+    @staticmethod
+    def _selected_key(targets, label):
+        for target in targets:
+            if target[1] == label:
+                return target[0]
+
+        return None
+
+    def _rescan_for_apk_targets(self):
+        if self.apk_usb_combo is None:
+            return
+
+        try:
+            targets = list_adb_targets()
+        except Exception as e:  # noqa: BLE001 - device scan must not kill the UI
+            self._log(f"ADB device scan failed: {e}")
+            return
+
+        previous = self._selected_key(self._apk_targets, self.apk_usb_var.get())
+
+        self._apk_targets = targets
+        self.apk_usb_combo["values"] = [target[1] for target in targets]
+
+        kept = next((target for target in targets if target[0] == previous), None)
+
+        self.apk_usb_var.set(kept[1] if kept else "")
+        self._sync_apk_install_button()
+
+    def _rescan_for_driver_targets(self):
+        if self.driver_usb_combo is None:
+            return
+
+        try:
+            targets = list_driver_targets()
+        except Exception as e:  # noqa: BLE001 - device scan must not kill the UI
+            self._log(f"USB device scan failed: {e}")
+            return
+
+        previous = self._selected_key(self._driver_targets, self.driver_usb_var.get())
+
+        self._driver_targets = targets
+        self.driver_usb_combo["values"] = [target[1] for target in targets]
+
+        kept = next((target for target in targets if target[0] == previous), None)
+
+        self.driver_usb_var.set(kept[1] if kept else "")
+        self._sync_driver_install_button()
+
+    def _sync_apk_install_button(self):
+        if self.apk_install_btn is None or self._install_lock.locked():
+            return
+
+        has_apk = self.apk_var.get().strip().lower().endswith(".apk")
+        has_device = (
+            self._selected_key(self._apk_targets, self.apk_usb_var.get()) is not None
+        )
+
+        self.apk_install_btn.config(
+            state=tk.NORMAL if has_apk and has_device else tk.DISABLED
+        )
+
+    def _sync_driver_install_button(self):
+        if self.driver_install_btn is None or self._install_lock.locked():
+            return
+
+        has_device = (
+            self._selected_key(self._driver_targets, self.driver_usb_var.get())
+            is not None
+        )
+
+        self.driver_install_btn.config(state=tk.NORMAL if has_device else tk.DISABLED)
+
+    def _on_tab_changed(self, _event=None):
+        if self.notebook.select() == str(self.setup_tab):
+            self._rescan_for_driver_targets()
 
     def _fix_combobox_highlight(self, combo: ttk.Combobox) -> None:
         # On the clam theme the readonly combobox keeps showing the chosen text as
@@ -425,17 +566,14 @@ class TKApp:
 
         if path:
             self.apk_var.set(path)
-            self.apk_install_btn.config(
-                state=tk.NORMAL,
-                text="Install",
-            )
+            self._sync_apk_install_button()
 
     def _install_apk(self):
         if not self._install_lock.acquire(blocking=False):
             return
 
         apk_path = self.apk_var.get().strip()
-        label = self.usb_var.get()
+        label = self.apk_usb_var.get()
 
         if not apk_path.lower().endswith(".apk"):
             self._install_lock.release()
@@ -443,25 +581,17 @@ class TKApp:
             return
 
         match = next(
-            (candidate for candidate in self._candidates if candidate[2] == label),
+            (target for target in self._apk_targets if target[1] == label),
             None,
         )
 
         if match is None:
             self._install_lock.release()
+            self.apk_usb_var.set("")
+            self._sync_apk_install_button()
             messagebox.showwarning(
                 "Missing",
-                "Select a connected USB device and refresh the device list if needed.",
-            )
-            return
-
-        serial = match[3]
-
-        if not serial:
-            self._install_lock.release()
-            messagebox.showwarning(
-                "Missing device serial",
-                "The selected USB device does not expose an ADB serial number.",
+                "Select a connected ADB device and refresh the device list if needed.",
             )
             return
 
@@ -469,12 +599,12 @@ class TKApp:
 
         self._install_thread = threading.Thread(
             target=self._install_apk_worker,
-            args=(apk_path, serial),
+            args=(apk_path, match[0], label),
             daemon=True,
         )
         self._install_thread.start()
 
-    def _install_apk_worker(self, apk_path, serial):
+    def _install_apk_worker(self, apk_path, serial, label):
         try:
             self._log(f"Installing {os.path.basename(apk_path)} on {serial}")
             install_apk(apk_path, serial)
@@ -493,38 +623,49 @@ class TKApp:
                 0,
                 lambda: messagebox.showinfo(
                     "Success",
-                    f"Install of {os.path.basename(apk_path)} on {serial} was successful",
+                    f"Install of {os.path.basename(apk_path)} on {label} was successful",
                 ),
             )
 
         finally:
-            self.root.after(
-                0,
-                lambda: self.apk_install_btn.config(state=tk.NORMAL, text="Install"),
-            )
             self._install_lock.release()
+            self.root.after(0, self._reset_apk_install_button)
+
+    def _reset_apk_install_button(self):
+        if self.apk_install_btn is not None:
+            self.apk_install_btn.config(text="Install")
+
+        self._sync_apk_install_button()
 
     def _install_winusb(self):
         if not self._install_lock.acquire(blocking=False):
             return
 
-        label = self.usb_var.get()
+        label = self.driver_usb_var.get()
         match = next(
-            (candidate for candidate in self._candidates if candidate[2] == label),
+            (target for target in self._driver_targets if target[1] == label),
             None,
         )
 
         if match is None:
             self._install_lock.release()
+            self.driver_usb_var.set("")
+            self._sync_driver_install_button()
             messagebox.showwarning(
                 "Missing",
                 "Select a connected USB device and refresh the device list if needed.",
             )
             return
 
+        device_id, _, vid, pid, is_accessory = match
+
         if not messagebox.askyesno(
             "Install WinUSB driver",
-            "This replaces the selected device driver with WinUSB and may require administrator approval. Continue?",
+            f"This replaces the driver on {label} with WinUSB and may require "
+            "administrator approval.\n\n"
+            f"Device: {vid:04x}:{pid:04x}"
+            + (" (accessory mode)" if is_accessory else " (not in accessory mode yet)")
+            + "\n\nOther connected devices are not affected. Continue?",
         ):
             self._install_lock.release()
             return
@@ -537,19 +678,20 @@ class TKApp:
             return
 
         self.driver_install_btn.config(state=tk.DISABLED, text="Installing...")
+
         self._driver_install_thread = threading.Thread(
             target=self._install_winusb_worker,
-            args=(match[0], match[1], label),
+            args=(device_id, label),
             daemon=True,
         )
         self._driver_install_thread.start()
 
-    def _install_winusb_worker(self, vid, pid, description):
+    def _install_winusb_worker(self, device_id, label):
         try:
             self.usb.disconnect()
-            self._log(f"Installing WinUSB on {description}")
-            _run_elevated_winusb_install(vid, pid, description)
-            self.root.after(0, self._rescan_for_usb_devices)
+            self._log(f"Installing WinUSB on {label}")
+            status = _run_elevated_winusb_install(device_id)
+            self.root.after(0, self._rescan_for_driver_targets)
 
         except Exception as e:  # noqa: BLE001 - worker boundary must report install failures
             self.root.after(
@@ -560,23 +702,22 @@ class TKApp:
             )
 
         else:
-            self.root.after(
-                0,
-                lambda: messagebox.showinfo(
-                    "Success", "Successfully installed USB driver"
-                ),
+            message = (
+                f"{label} was already on WinUSB"
+                if status == "already-installed"
+                else f"Successfully installed WinUSB on {label}"
             )
+            self.root.after(0, lambda: messagebox.showinfo("Success", message))
 
         finally:
-
-            def reset_driver_button():
-                if self.driver_install_btn is not None:
-                    self.driver_install_btn.config(
-                        state=tk.NORMAL, text="Install Driver"
-                    )
-
-            self.root.after(0, reset_driver_button)
             self._install_lock.release()
+            self.root.after(0, self._reset_driver_install_button)
+
+    def _reset_driver_install_button(self):
+        if self.driver_install_btn is not None:
+            self.driver_install_btn.config(text="Install Driver")
+
+        self._sync_driver_install_button()
 
     def _log(self, msg):
         if threading.current_thread() is not threading.main_thread():
@@ -592,10 +733,13 @@ class TKApp:
         self.log_text.configure(state=tk.DISABLED)
 
     def _copy_selection(self, event=None):
-        try:
-            selection = event.widget.selection_get()
-        except tk.TclError:
-            selection = None
+        selection = None
+
+        if event is not None:
+            try:
+                selection = event.widget.selection_get()
+            except tk.TclError:
+                selection = None
 
         if selection:
             self.root.clipboard_clear()
