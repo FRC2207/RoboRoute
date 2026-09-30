@@ -59,7 +59,7 @@ dependencies {
     implementation(libs.protobuf.javalite)
     implementation(libs.gson)
 
-    implementation("androidx.navigation:navigation-compose:2.10.1")
+    implementation("androidx.navigation:navigation-compose:2.10.2")
     implementation("androidx.compose.material:material-icons-extended")
     implementation(platform(libs.androidx.compose.bom))
     implementation(libs.androidx.activity.compose)
