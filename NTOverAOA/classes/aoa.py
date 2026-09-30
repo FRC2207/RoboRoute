@@ -1,12 +1,18 @@
 import usb.core
 import usb.util
 
+ACCESSORY_VID = 0x18D1
+
 # Android Open Accessory v2 devices may expose one of these PIDs depending on
 # whether ADB and/or audio are enabled. These are the modes that include the
 # bulk accessory interface; 2D02 and 2D03 are audio-only.
-ACCESSORY_IDS = [
-    (0x18D1, product_id) for product_id in (0x2D00, 0x2D01, 0x2D04, 0x2D05)
-]
+ACCESSORY_PIDS = (0x2D00, 0x2D01, 0x2D04, 0x2D05)
+
+ACCESSORY_IDS = [(ACCESSORY_VID, product_id) for product_id in ACCESSORY_PIDS]
+
+
+def is_accessory_id(vid, pid):
+    return vid == ACCESSORY_VID and pid in ACCESSORY_PIDS
 
 
 def find_device(known_devices):

@@ -5,6 +5,9 @@ import sys
 import tempfile
 import time
 
+from .android_usb import ANDROID, UNKNOWN, device_android_kind
+from .aoa import is_accessory_id
+
 
 class _WdiDeviceInfo(ctypes.Structure):
     pass
@@ -139,11 +142,16 @@ def _device_driver(device):
     return device.driver.decode("utf-8", errors="replace")
 
 
-def install_winusb_driver(vid, pid, description=None):
-    library, _dll_handle = _load_library()
+def _device_id(device):
+    if not device.device_id:
+        return ""
+    return device.device_id.decode("utf-8", errors="replace")
 
+
+def _create_device_list(library):
     device_list = ctypes.POINTER(_WdiDeviceInfo)()
     list_options = _WdiCreateListOptions(1, 0, 1)
+
     result = library.wdi_create_list(
         ctypes.byref(device_list), ctypes.byref(list_options)
     )
@@ -153,30 +161,99 @@ def install_winusb_driver(vid, pid, description=None):
             f"Could not enumerate USB devices: {_error_message(library, result)}"
         )
 
+    return device_list
+
+
+def _target_label(device):
+    parts = [f"{device.vid:04x}:{device.pid:04x}"]
+
+    description = _device_description(device)
+
+    if description:
+        parts.append(description)
+
+    if is_accessory_id(device.vid, device.pid):
+        parts.append("(accessory mode)")
+
+    return " ".join(parts)
+
+
+def list_driver_targets():
+    library, dll_handle = _load_library()
+    device_list = _create_device_list(library)
+
     try:
-        matches = []
+        targets = []
         current = device_list
 
         while current:
             device = current.contents
-            if device.vid == vid and device.pid == pid:
-                matches.append(current)
             current = device.next
 
-        if not matches:
-            raise RuntimeError(
-                f"Selected device {vid:04x}:{pid:04x} is no longer connected"
+            device_id = _device_id(device)
+
+            if not device_id:
+                continue
+
+            kind = device_android_kind(device_id)
+
+            if kind == UNKNOWN and is_accessory_id(device.vid, device.pid):
+                kind = ANDROID
+
+            targets.append(
+                (
+                    device_id,
+                    _target_label(device),
+                    device.vid,
+                    device.pid,
+                    is_accessory_id(device.vid, device.pid),
+                    kind,
+                )
             )
 
-        selected = matches[0]
-        if description:
-            for match in matches:
-                if _device_description(match.contents) == description:
-                    selected = match
-                    break
+    finally:
+        library.wdi_destroy_list(device_list)
+        del dll_handle
+
+    # Accessory-mode devices first: they are the ones RoboRoute actually needs,
+    # and a tablet that just switched into AOA should not be buried in the list.
+    # The rest of our Android devices follow, then everything else.
+    targets.sort(
+        key=lambda target: (
+            not target[4],
+            target[5] != ANDROID,
+            target[2],
+            target[3],
+            target[1],
+        )
+    )
+
+    return targets
+
+
+def install_winusb_driver(device_id):
+    library, _dll_handle = _load_library()
+    device_list = _create_device_list(library)
+
+    try:
+        selected = None
+        current = device_list
+
+        while current:
+            device = current.contents
+            if _device_id(device) == device_id:
+                selected = current
+                break
+            current = device.next
+
+        if selected is None:
+            raise RuntimeError(
+                "The selected device is no longer connected. "
+                "Refresh the device list and try again."
+            )
 
         if "winusb" in _device_driver(selected.contents).lower():
-            return
+            return "already-installed"
 
         with tempfile.TemporaryDirectory(prefix="ntoveraoa-libwdi-") as driver_dir:
             inf_name = b"ntoveraoa-winusb.inf"
@@ -215,8 +292,10 @@ def install_winusb_driver(vid, pid, description=None):
     finally:
         library.wdi_destroy_list(device_list)
 
+    return "installed"
 
-def _run_elevated_winusb_install(vid, pid, description):
+
+def _run_elevated_winusb_install(device_id):
     if sys.platform != "win32":
         raise RuntimeError("WinUSB driver installation is only available on Windows")
 
@@ -231,9 +310,7 @@ def _run_elevated_winusb_install(vid, pid, description):
 
     try:
         with open(request_path, "w", encoding="utf-8") as request_file:
-            json.dump(
-                {"vid": vid, "pid": pid, "description": description}, request_file
-            )
+            json.dump({"device_id": device_id}, request_file)
 
         if getattr(sys, "frozen", False):
             executable = sys.executable
@@ -263,7 +340,7 @@ def _run_elevated_winusb_install(vid, pid, description):
                 with open(result_path, "r", encoding="utf-8") as result_file:
                     response = json.load(result_file)
                 if response.get("ok"):
-                    return
+                    return response.get("status", "installed")
                 raise RuntimeError(response.get("error", "WinUSB installation failed"))
             time.sleep(0.1)
 
@@ -281,12 +358,8 @@ def _handle_elevated_winusb_install(request_path, result_path):
         with open(request_path, "r", encoding="utf-8") as request_file:
             request = json.load(request_file)
 
-        install_winusb_driver(
-            request["vid"],
-            request["pid"],
-            request["description"],
-        )
-        response = {"ok": True}
+        status = install_winusb_driver(request["device_id"])
+        response = {"ok": True, "status": status}
     except Exception as error:  # noqa: BLE001 - serialize installer errors for the caller
         response = {"ok": False, "error": str(error)}
 
