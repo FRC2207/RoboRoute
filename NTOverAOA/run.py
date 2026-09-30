@@ -12,6 +12,7 @@ except Exception:  # noqa: BLE001 - import raises NoImplementationFoundException
     crossfiledialog = None
 import usb.core
 
+from classes.android_usb import ANDROID, UNKNOWN
 from classes.apk_installer import install_apk, list_adb_targets
 from classes.bridge import NTOverUSBBridge
 from classes.robot_ip import DriverStationInterop
@@ -114,6 +115,9 @@ class TKApp:
         self.apk_usb_combo = None
         self.driver_usb_combo = None
         self.driver_install_btn = None
+        self.show_all_usb_var = None
+        self.show_all_usb_check = None
+        self.driver_hint = None
         self._install_lock = threading.Lock()
 
         self.bridge = NTOverUSBBridge(
@@ -365,6 +369,26 @@ class TKApp:
             )
             self.driver_install_btn.pack(anchor=tk.W, pady=(8, 0))
 
+            advanced = ttk.Labelframe(driver_frame, text="Advanced", padding=(6, 4))
+            advanced.pack(fill=tk.X, pady=(10, 0))
+
+            self.show_all_usb_var = tk.BooleanVar(value=False)
+            self.show_all_usb_check = ttk.Checkbutton(
+                advanced,
+                text="Show all USB devices (not just this tablet)",
+                variable=self.show_all_usb_var,
+                command=self._rescan_for_driver_targets,
+            )
+            self.show_all_usb_check.pack(anchor=tk.W)
+
+            self.driver_hint = ttk.Label(
+                advanced,
+                text="",
+                foreground="#a33",
+                wraplength=380,
+            )
+            self.driver_hint.pack(anchor=tk.W, pady=(2, 0))
+
         subs_tab = ttk.Frame(self.notebook, padding="8")
         self.notebook.add(subs_tab, text="Subscriptions")
 
@@ -441,6 +465,12 @@ class TKApp:
         self.apk_usb_var.set(kept[1] if kept else "")
         self._sync_apk_install_button()
 
+    def _visible_driver_targets(self, targets):
+        if self.show_all_usb_var is not None and self.show_all_usb_var.get():
+            return targets
+
+        return [target for target in targets if target[5] == ANDROID]
+
     def _rescan_for_driver_targets(self):
         if self.driver_usb_combo is None:
             return
@@ -454,11 +484,36 @@ class TKApp:
         previous = self._selected_key(self._driver_targets, self.driver_usb_var.get())
 
         self._driver_targets = targets
-        self.driver_usb_combo["values"] = [target[1] for target in targets]
 
-        kept = next((target for target in targets if target[0] == previous), None)
+        visible = self._visible_driver_targets(targets)
+        self.driver_usb_combo["values"] = [target[1] for target in visible]
+
+        kept = next((target for target in visible if target[0] == previous), None)
 
         self.driver_usb_var.set(kept[1] if kept else "")
+
+        if self.driver_hint is not None:
+            if visible:
+                self.driver_hint.config(text="")
+            elif not targets:
+                self.driver_hint.config(
+                    text="No USB devices found. Try another cable or port."
+                )
+            elif any(target[5] == UNKNOWN for target in targets):
+                self.driver_hint.config(
+                    text=(
+                        "Could not identify the connected devices. Use "
+                        "'Show all USB devices' below to see every device."
+                    )
+                )
+            else:
+                self.driver_hint.config(
+                    text=(
+                        "No Android device detected. Make sure the tablet is "
+                        "plugged in and unlocked, then refresh."
+                    )
+                )
+
         self._sync_driver_install_button()
 
     def _sync_apk_install_button(self):
@@ -657,7 +712,7 @@ class TKApp:
             )
             return
 
-        device_id, _, vid, pid, is_accessory = match
+        device_id, _, vid, pid, is_accessory, _is_google = match
 
         if not messagebox.askyesno(
             "Install WinUSB driver",

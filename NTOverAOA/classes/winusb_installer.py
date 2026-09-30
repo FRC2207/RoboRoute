@@ -5,6 +5,7 @@ import sys
 import tempfile
 import time
 
+from .android_usb import ANDROID, UNKNOWN, device_android_kind
 from .aoa import is_accessory_id
 
 
@@ -194,6 +195,11 @@ def list_driver_targets():
             if not device_id:
                 continue
 
+            kind = device_android_kind(device_id)
+
+            if kind == UNKNOWN and is_accessory_id(device.vid, device.pid):
+                kind = ANDROID
+
             targets.append(
                 (
                     device_id,
@@ -201,6 +207,7 @@ def list_driver_targets():
                     device.vid,
                     device.pid,
                     is_accessory_id(device.vid, device.pid),
+                    kind,
                 )
             )
 
@@ -210,7 +217,16 @@ def list_driver_targets():
 
     # Accessory-mode devices first: they are the ones RoboRoute actually needs,
     # and a tablet that just switched into AOA should not be buried in the list.
-    targets.sort(key=lambda target: (not target[4], target[2], target[3], target[1]))
+    # The rest of our Android devices follow, then everything else.
+    targets.sort(
+        key=lambda target: (
+            not target[4],
+            target[5] != ANDROID,
+            target[2],
+            target[3],
+            target[1],
+        )
+    )
 
     return targets
 
