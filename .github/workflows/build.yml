@@ -26,6 +26,13 @@ jobs:
     runs-on: ubuntu-22.04
 
     steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          sparse-checkout: |
+            LICENSE
+            LIBWDI-LICENSE
+
       - name: Download APK
         uses: actions/download-artifact@v8
         with:
@@ -62,27 +69,47 @@ jobs:
             exit 1
           fi
 
+          # Create license notice
+          cat > LICENSE-NOTICE.txt << 'EOF'
+          License Notice
+
+          The RoboRoute APK is licensed under the MIT License (see LICENSE).
+          NTOverAOA is licensed under the MIT License (see LICENSE).
+
+          NTOverAOA uses libwdi (https://github.com/pbatard/libwdi) for windows device driver configuration, which is
+          licensed under the GNU Lesser General Public License v3.0 (see LIBWDI-LICENSE).
+          EOF
+
           mkdir -p packages
 
           cp "$apk" bundles/windows/RoboRoute.apk
+          cp LICENSE bundles/windows/
+          cp LIBWDI-LICENSE bundles/windows/
+          cp LICENSE-NOTICE.txt bundles/windows/
           (
             cd bundles/windows
             zip -r "../../packages/RoboRoute-windows-x86_64.zip" \
-              NTOverAOA.exe RoboRoute.apk
+              NTOverAOA.exe RoboRoute.apk LICENSE LIBWDI-LICENSE LICENSE-NOTICE.txt
           )
 
           cp "$apk" bundles/linux-x86_64/RoboRoute.apk
+          cp LICENSE bundles/linux-x86_64/
+          cp LIBWDI-LICENSE bundles/linux-x86_64/
+          cp LICENSE-NOTICE.txt bundles/linux-x86_64/
           (
             cd bundles/linux-x86_64
             tar -czf "../../packages/RoboRoute-linux-x86_64.tar.gz" \
-              NTOverAOA-linux-x86_64.run RoboRoute.apk
+              NTOverAOA-linux-x86_64.run RoboRoute.apk LICENSE LIBWDI-LICENSE LICENSE-NOTICE.txt
           )
 
           cp "$apk" bundles/linux-arm64/RoboRoute.apk
+          cp LICENSE bundles/linux-arm64/
+          cp LIBWDI-LICENSE bundles/linux-arm64/
+          cp LICENSE-NOTICE.txt bundles/linux-arm64/
           (
             cd bundles/linux-arm64
             tar -czf "../../packages/RoboRoute-linux-arm64.tar.gz" \
-              NTOverAOA-linux-arm64.run RoboRoute.apk
+              NTOverAOA-linux-arm64.run RoboRoute.apk LICENSE LIBWDI-LICENSE LICENSE-NOTICE.txt
           )
 
           ls -la packages
