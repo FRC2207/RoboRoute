@@ -21,10 +21,10 @@ Download the latest release from https://github.com/frc2207/RoboRoute
 - Extract all files from the downloaded file
 - Run the NTOverAOA application
 - Plugin your android device with USB debugging mode enabled
-- Select the usb device from the dropdown in the connection tab
 - Navigate to the setup tab within the app
+- Select the usb device from the dropdown for the apk
 - Browse for an apk file, use the file included in your extracted download, click install
-- Once the apk installation finishes, click install driver (Windows only, linux should work out of the box)
+- Once the apk installation finishes, select the correct usb device and click install in the driver section (Windows only, linux should work out of the box)
 - Navigate to the connection tab, and click connect, the robot's ip should come from driver station automatically but can be changed in the dropdown
 
 Done!

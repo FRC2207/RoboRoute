@@ -39,6 +39,56 @@ def _adb_signer():
     return PythonRSASigner.FromRSAKeyPath(key_path)
 
 
+def list_adb_targets():
+    """List USB devices exposing an ADB interface.
+
+    Enumerates with adb_shell's own libusb1 context and interface matcher, which
+    only reads descriptors and never claims the interface, so refreshing this
+    list cannot lock a device out of a later install.
+    """
+    from adb_shell.transport.usb_transport import (
+        CLASS,
+        PROTOCOL,
+        SUBCLASS,
+        UsbTransport,
+        interface_matcher,
+    )
+
+    matcher = interface_matcher(CLASS, SUBCLASS, PROTOCOL)
+    targets = []
+
+    for device in UsbTransport.USB1_CTX.getDeviceIterator(skip_on_error=True):
+        try:
+            if matcher(device) is None:
+                continue
+
+            serial = device.getSerialNumber()
+
+            if not serial:
+                continue
+
+            name = " ".join(
+                part for part in (device.getManufacturer(), device.getProduct()) if part
+            )
+
+            vid = device.getVendorID()
+            pid = device.getProductID()
+
+            if name:
+                label = f"{serial} {name}"
+            else:
+                label = f"{serial} {vid:04x}:{pid:04x}"
+
+        except Exception:  # noqa: BLE001, S112 - one device must not abort the scan
+            continue
+
+        targets.append((serial, label, vid, pid))
+
+    targets.sort(key=lambda target: target[1].lower())
+
+    return targets
+
+
 def install_apk(apk_path, serial):
     from adb_shell.adb_device import AdbDeviceUsb
 
