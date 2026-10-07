@@ -1,5 +1,6 @@
 import base64
 import json
+import threading
 import time
 
 import ntcore
@@ -40,6 +41,10 @@ class NTHandler:
         self.connected = False
         self._subscribers = {}
         self._publishers = {}
+        self._heartbeat_ts_pub = None
+        self._heartbeat_stop = False
+        self._heartbeat_thread = None
+        self._heartbeat_base = "RoboRoute/Heartbeat"
 
     def is_connected(self):
         if not self.connected:
@@ -76,11 +81,45 @@ class NTHandler:
             time.sleep(0.2)
 
         self.connected = True
+        self._start_heartbeat()
 
         return self.inst
 
+    def _start_heartbeat(self):
+        self._heartbeat_stop = False
+        if self._heartbeat_thread is not None and self._heartbeat_thread.is_alive():
+            return
+        self._heartbeat_thread = threading.Thread(
+            target=self._heartbeat_loop, daemon=True
+        )
+        self._heartbeat_thread.start()
+
+    def _heartbeat_loop(self):
+        last_publish = 0.0
+        heartbeat_topic = self._heartbeat_base
+        while self.connected and not self._heartbeat_stop and self.inst is not None:
+            now = time.monotonic()
+            if now - last_publish >= 0.5:
+                try:
+                    if self.inst.isConnected():
+                        if self._heartbeat_ts_pub is None:
+                            topic = self.inst.getTopic(heartbeat_topic)
+                            self._heartbeat_ts_pub = topic.genericPublish("double")
+                        self._heartbeat_ts_pub.setDouble(time.time())
+                except Exception as error:  # noqa: BLE001
+                    self.on_log(f"Heartbeat publish failed: {error}")
+                last_publish = now
+            time.sleep(0.1)
+
+    def _stop_heartbeat(self):
+        self._heartbeat_stop = True
+        if self._heartbeat_thread is not None:
+            self._heartbeat_thread.join(timeout=1.0)
+        self._heartbeat_thread = None
+
     def disconnect(self):
         self.connected = False
+        self._stop_heartbeat()
 
         for subscriber in self._subscribers.values():
             close = getattr(subscriber, "close", None)
