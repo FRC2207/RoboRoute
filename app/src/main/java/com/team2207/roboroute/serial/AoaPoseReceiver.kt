@@ -10,6 +10,7 @@ import android.hardware.usb.UsbManager
 import android.os.Build
 import android.os.ParcelFileDescriptor
 import com.google.gson.Gson
+import com.google.gson.JsonArray
 import com.google.gson.JsonObject
 import com.team2207.roboroute.datastore.ActionRepository
 import kotlinx.coroutines.CoroutineScope
@@ -31,7 +32,6 @@ import java.io.IOException
 import java.io.InputStream
 import java.io.OutputStream
 import java.nio.charset.StandardCharsets
-
 object AoaSubscribeTrigger {
     val events = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
 
@@ -286,46 +286,36 @@ class AoaPoseReceiver(
         }
     }
 
-    suspend fun runPose(pose: com.team2207.roboroute.datastore.Pose2d) { // This long string is the pose2d type
-        val poseMap =
-            mapOf( // Mapping to GSON so it works
-                "translation" to
-                    mapOf(
-                        "x" to pose.x,
-                        "y" to pose.y,
-                    ),
-                "rotation" to
-                    mapOf(
-                        "value" to pose.rotation,
-                    ),
-            )
-        val schema = "struct Pose2d {struct Translation2d {double x; double y;} translation; struct Rotation2d {double value;} rotation;}"
-        putValue(key = "/RoboRoute/Pose", value = poseMap, schema = schema) // Using the putValue fun to send the pose
-        putValue(key = "/RoboRoute/RunPose", value = true) // Enabling trigger to tell robot to run
-        delay(1000)
-        putValue(key = "/RoboRoute/RunPose", value = false) // Disabling trigger so it doesn't loop
+    suspend fun runPose(pose: com.team2207.roboroute.datastore.Pose2d) { // This long string is the Pose2d type
+        val jsonStructure = JsonObject().apply {
+            addProperty("type", "POSE")
+            add("pose", JsonObject().apply {
+                addProperty("x", pose.x)
+                addProperty("y", pose.y)
+                addProperty("rotation", pose.rotation)
+            })
+        }
+
+        putValue(key = "/RoboRoute/Plan", value = jsonStructure.toString()) // Using the putValue fun to send the pose
     }
 
     suspend fun runRoute(route: List<com.team2207.roboroute.datastore.Pose2d>) {
         if (route.isEmpty()) return
 
-        val routeValue =
-            route.map { pose ->
-                mapOf(
-                    "translation" to mapOf("x" to pose.x, "y" to pose.y),
-                    "rotation" to mapOf("value" to pose.rotation),
-                )
-            }
+        val plan = JsonObject().apply {
+            addProperty("type", "ROUTE")
+            add("routePoses", JsonArray().apply {
+                route.forEach { pose ->
+                    add(JsonObject().apply {
+                        addProperty("x", pose.x)
+                        addProperty("y", pose.y)
+                        addProperty("rotation", pose.rotation)
+                    })
+                }
+            })
+        }
 
-        val schema =
-            "struct Pose2d {struct Translation2d {double x; double y;} translation; " +
-                "struct Rotation2d {double value;} rotation;}"
-
-        putValue(key = "/RoboRoute/Route", value = routeValue, schema = schema)
-
-        putValue(key = "/RoboRoute/RunRoute", value = true)
-        delay(1000)
-        putValue(key = "/RoboRoute/RunRoute", value = false)
+        putValue(key = "/RoboRoute/Plan", value = plan.toString())
     }
 
     fun subscribe(path: String) {
