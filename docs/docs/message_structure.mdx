@@ -2,7 +2,10 @@
 title: Message Structure
 sidebar_position: 4
 ---
-## AOA Messages
+
+import StepDocs from '@site/src/components/StepDocs';
+import CodeBlock from "@theme/CodeBlock";
+import Detail from "@theme/Details"
 
 ## Android Device -> NTOverAOA
 
@@ -54,25 +57,6 @@ Decoded struct value example, decoded to match the struct schema
 ```json
 {"translation":{"x":..,"y":..}, "rotation": {...}}
 ```
-## NetworkTables Actions Structure
-The data to and from NetworkTables is split into two topics (Run, Data) for each action type (Pose, Route, Path)
-
-All NetworkTables entries are under the `RoboRoute` table, to for example pathfind to a pose, we would first set the data topic
-```json
-{"action":"put", "key":"/RoboRoute/Pose", "schema":"struct Pose2d {...}", "value":{...}}
-```
-
-Then we would set the `RunPose` topic true for ~1 second, then set it false
-```json
-{"action":"put", "key":"/RoboRoute/RunPose", "value": true}
-// ~1 second later
-{"action":"put", "key":"/RoboRoute/RunPose", "value": false}
-```
-We can repeat these steps for the Route and Path action types
-
-- Pose - Pose2d
-- Path - String
-- Route - Pose2d[]
 
 ## Structs
 When using a struct for either sending or receiving, there is a schema that is attached, this is an example for a Pose2d
@@ -84,3 +68,61 @@ When using a struct for either sending or receiving, there is a schema that is a
 {"translation":{"x":1.5,"y":-2.25},"rotation":{"value":0.1234}}
 ```
 To supply an array of structs, the schema is the same but the values are supplied as an array `[]`
+
+
+## RoboRoute -> Robot Specific Structure
+To support sending sequences of data and custom positions, routes, and actions we have created a json structure that is sent via Network tables
+
+A plan is sent all at once as a string via NetworkTables as `/RoboRoute/Plan`. A plan is counter intuitive as it is only one step, but steps can be nested using Sequences and Parallel Groups
+
+<StepDocs />
+<Detail summary={"Example Plan"}>
+<CodeBlock language="json" title="Plan.json">{`{
+    "type": "SEQUENCE",
+    "children": [
+        {
+            "type": "PATH",
+            "pathName": "LeaveStart"
+        },
+        {
+            "type": "PARALLEL",
+            "children": [
+                {
+                    "type": "POSE",
+                    "pose": {
+                        "x": 2.0,
+                        "y": 3.0,
+                        "rotation": 1.57
+                    }
+                },
+                {
+                    "type": "ACTION",
+                    "actionId": 1
+                }
+            ]
+        },
+        {
+            "type": "ROUTE",
+            "routePoses": [
+                {
+                    "x": 2.0,
+                    "y": 3.0,
+                    "rotation": 1.57
+                },
+                {
+                    "x": 4.0,
+                    "y": 7.0,
+                    "rotation": 2.68
+                }
+            ]
+        }
+    ]
+}`}
+</CodeBlock>
+</Detail>
+
+### Robot Side Implmentation Examples
+
+AdvantageKit example [here](https://github.com/FRC2207/2207library/tree/main/src/main/java/frc/robot/lib/roboRoute)
+
+Non AdvantageKit example - coming soon

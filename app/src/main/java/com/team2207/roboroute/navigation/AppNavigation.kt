@@ -61,11 +61,11 @@ fun AppNavigation() {
             route = "$POSE_SELECTOR_SCREEN?x={x}&y={y}&r={r}&w={w}&l={l}",
             arguments =
                 listOf(
-                    androidx.navigation.navArgument("x") { defaultValue = "0.0" },
-                    androidx.navigation.navArgument("y") { defaultValue = "0.0" },
-                    androidx.navigation.navArgument("r") { defaultValue = "0.0" },
-                    androidx.navigation.navArgument("w") { defaultValue = "0.6" },
-                    androidx.navigation.navArgument("l") { defaultValue = "0.6" },
+                    navArgument("x") { defaultValue = "0.0" },
+                    navArgument("y") { defaultValue = "0.0" },
+                    navArgument("r") { defaultValue = "0.0" },
+                    navArgument("w") { defaultValue = "0.6" },
+                    navArgument("l") { defaultValue = "0.6" },
                 ),
         ) { backStackEntry ->
             val x = backStackEntry.arguments?.getString("x")?.toDoubleOrNull() ?: 0.0
