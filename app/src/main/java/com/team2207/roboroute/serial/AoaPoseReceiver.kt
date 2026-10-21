@@ -354,7 +354,7 @@ class AoaPoseReceiver(
         stopped = true
         try {
             context.unregisterReceiver(usbReceiver)
-        } catch (e: Exception) {
+        } catch (_: Exception) {
         }
         scope.cancel()
         closeAccessory()
