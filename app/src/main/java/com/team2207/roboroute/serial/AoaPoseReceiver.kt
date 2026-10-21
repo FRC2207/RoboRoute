@@ -32,6 +32,7 @@ import java.io.IOException
 import java.io.InputStream
 import java.io.OutputStream
 import java.nio.charset.StandardCharsets
+
 object AoaSubscribeTrigger {
     val events = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
 
@@ -287,14 +288,18 @@ class AoaPoseReceiver(
     }
 
     suspend fun runPose(pose: com.team2207.roboroute.datastore.Pose2d) { // This long string is the Pose2d type
-        val jsonStructure = JsonObject().apply {
-            addProperty("type", "POSE")
-            add("pose", JsonObject().apply {
-                addProperty("x", pose.x)
-                addProperty("y", pose.y)
-                addProperty("rotation", pose.rotation)
-            })
-        }
+        val jsonStructure =
+            JsonObject().apply {
+                addProperty("type", "POSE")
+                add(
+                    "pose",
+                    JsonObject().apply {
+                        addProperty("x", pose.x)
+                        addProperty("y", pose.y)
+                        addProperty("rotation", pose.rotation)
+                    },
+                )
+            }
 
         putValue(key = "/RoboRoute/Plan", value = jsonStructure.toString()) // Using the putValue fun to send the pose
     }
@@ -302,18 +307,24 @@ class AoaPoseReceiver(
     suspend fun runRoute(route: List<com.team2207.roboroute.datastore.Pose2d>) {
         if (route.isEmpty()) return
 
-        val plan = JsonObject().apply {
-            addProperty("type", "ROUTE")
-            add("routePoses", JsonArray().apply {
-                route.forEach { pose ->
-                    add(JsonObject().apply {
-                        addProperty("x", pose.x)
-                        addProperty("y", pose.y)
-                        addProperty("rotation", pose.rotation)
-                    })
-                }
-            })
-        }
+        val plan =
+            JsonObject().apply {
+                addProperty("type", "ROUTE")
+                add(
+                    "routePoses",
+                    JsonArray().apply {
+                        route.forEach { pose ->
+                            add(
+                                JsonObject().apply {
+                                    addProperty("x", pose.x)
+                                    addProperty("y", pose.y)
+                                    addProperty("rotation", pose.rotation)
+                                },
+                            )
+                        }
+                    },
+                )
+            }
 
         putValue(key = "/RoboRoute/Plan", value = plan.toString())
     }
