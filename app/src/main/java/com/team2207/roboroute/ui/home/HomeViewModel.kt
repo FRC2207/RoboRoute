@@ -3,6 +3,9 @@ package com.team2207.roboroute.ui.home
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.team2207.roboroute.aoa.AoaActionSender
+import com.team2207.roboroute.aoa.AoaConnectionState
+import com.team2207.roboroute.aoa.RobotPoseManager
 import com.team2207.roboroute.datastore.ActionRepository
 import com.team2207.roboroute.datastore.ActionType
 import com.team2207.roboroute.datastore.AppData
@@ -10,9 +13,6 @@ import com.team2207.roboroute.datastore.ButtonLayout
 import com.team2207.roboroute.datastore.CustomButton
 import com.team2207.roboroute.datastore.LayoutRepository
 import com.team2207.roboroute.datastore.Pose2d
-import com.team2207.roboroute.serial.AoaConnectionState
-import com.team2207.roboroute.serial.AoaPoseReceiver
-import com.team2207.roboroute.serial.RobotPoseManager
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -119,14 +119,14 @@ class HomeViewModel(
     fun executeAction(action: com.team2207.roboroute.datastore.Action) {
         if (action.actionType == ActionType.POSE) {
             viewModelScope.launch {
-                AoaPoseReceiver.instance?.runPose(action.pose)
+                AoaActionSender.runPose(action.pose)
             }
         }
     }
 
     fun executeRoute(route: List<com.team2207.roboroute.datastore.Pose2d>) {
         viewModelScope.launch {
-            AoaPoseReceiver.instance?.runRoute(route)
+            AoaActionSender.runRoute(route)
         }
     }
 

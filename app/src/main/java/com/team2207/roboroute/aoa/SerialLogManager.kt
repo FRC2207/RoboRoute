@@ -1,4 +1,4 @@
-package com.team2207.roboroute.serial
+package com.team2207.roboroute.aoa
 
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow

@@ -48,7 +48,7 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.team2207.roboroute.R
-import com.team2207.roboroute.serial.RobotPoseManager
+import com.team2207.roboroute.aoa.RobotPoseManager
 import com.team2207.roboroute.ui.components.FullScreenImage
 import com.team2207.roboroute.ui.theme.BlueAlliance
 import com.team2207.roboroute.ui.theme.Orange
