@@ -1,4 +1,4 @@
-package com.team2207.roboroute.serial
+package com.team2207.roboroute.aoa
 
 import android.app.PendingIntent
 import android.content.BroadcastReceiver
@@ -10,21 +10,17 @@ import android.hardware.usb.UsbManager
 import android.os.Build
 import android.os.ParcelFileDescriptor
 import com.google.gson.Gson
-import com.google.gson.JsonArray
 import com.google.gson.JsonObject
 import com.team2207.roboroute.datastore.ActionRepository
+import com.team2207.roboroute.datastore.Pose2d
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import java.io.ByteArrayOutputStream
 import java.io.FileInputStream
 import java.io.FileOutputStream
@@ -38,15 +34,6 @@ object AoaSubscribeTrigger {
 
     fun trigger() {
         events.tryEmit(Unit)
-    }
-}
-
-object AoaConnectionState {
-    private val _isConnected = MutableStateFlow(false)
-    val isConnected: StateFlow<Boolean> = _isConnected.asStateFlow()
-
-    fun setConnected(connected: Boolean) {
-        _isConnected.value = connected
     }
 }
 
@@ -257,76 +244,24 @@ class AoaPoseReceiver(
         }
     }
 
+    suspend fun sendJson(json: String) {
+        AoaConnection.sendJson(outputStream, json)
+    }
+
     suspend fun putValue(
         key: String,
         value: Any,
         schema: String? = null,
     ) {
-        val stream = outputStream ?: return // Ensuring that the AOA connection is active
-
-        val message =
-            mutableMapOf( // Making the data structure for the put message
-                "action" to "put",
-                "key" to key,
-                "value" to value,
-            )
-        if (schema != null) {
-            message["schema"] = schema
-        }
-
-        val json = gson.toJson(message) + "\n" // Adding the newline so that it doesn't get mad
-
-        withContext(Dispatchers.IO) {
-            try {
-                val bytes = json.toByteArray() // Changing to byte array
-                stream.write(bytes) // Writing to the AOA thing with the bytes
-                stream.flush() // Flush makes it send immediately
-            } catch (e: IOException) {
-                SerialLogManager.addLog("AOA: Put Error: ${e.message}") // Logging error if cable disconnects
-            }
-        }
+        AoaActionSender.putValue(key, value, schema)
     }
 
-    suspend fun runPose(pose: com.team2207.roboroute.datastore.Pose2d) { // This long string is the Pose2d type
-        val jsonStructure =
-            JsonObject().apply {
-                addProperty("type", "POSE")
-                add(
-                    "pose",
-                    JsonObject().apply {
-                        addProperty("x", pose.x)
-                        addProperty("y", pose.y)
-                        addProperty("rotation", pose.rotation)
-                    },
-                )
-            }
-
-        putValue(key = "/RoboRoute/Plan", value = jsonStructure.toString()) // Using the putValue fun to send the pose
+    suspend fun runPose(pose: Pose2d) {
+        AoaActionSender.runPose(pose)
     }
 
-    suspend fun runRoute(route: List<com.team2207.roboroute.datastore.Pose2d>) {
-        if (route.isEmpty()) return
-
-        val plan =
-            JsonObject().apply {
-                addProperty("type", "ROUTE")
-                add(
-                    "routePoses",
-                    JsonArray().apply {
-                        route.forEach { pose ->
-                            add(
-                                JsonObject().apply {
-                                    addProperty("x", pose.x)
-                                    addProperty("y", pose.y)
-                                    addProperty("rotation", pose.rotation)
-                                },
-                            )
-                        }
-                    },
-                )
-            }
-
-        putValue(key = "/RoboRoute/Plan", value = plan.toString())
+    suspend fun runRoute(route: List<Pose2d>) {
+        AoaActionSender.runRoute(route)
     }
 
     fun subscribe(path: String) {

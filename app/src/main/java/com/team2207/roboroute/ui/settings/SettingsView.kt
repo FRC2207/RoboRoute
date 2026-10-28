@@ -58,7 +58,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavController
-import com.team2207.roboroute.serial.SerialLogManager
+import com.team2207.roboroute.aoa.SerialLogManager
 import com.team2207.roboroute.ui.action.ActionCreationScreen
 import com.team2207.roboroute.ui.theme.returnPrimaryColor
 import com.team2207.roboroute.ui.theme.returnSecondaryColor

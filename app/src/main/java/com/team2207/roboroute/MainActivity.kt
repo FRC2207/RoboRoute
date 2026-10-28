@@ -5,9 +5,9 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import com.team2207.roboroute.aoa.AoaPoseReceiver
 import com.team2207.roboroute.datastore.ActionRepository
 import com.team2207.roboroute.navigation.AppNavigation
-import com.team2207.roboroute.serial.AoaPoseReceiver
 import com.team2207.roboroute.ui.theme.RoboRouteTheme
 
 class MainActivity : ComponentActivity() {

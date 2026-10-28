@@ -6,6 +6,7 @@ import android.net.Uri
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.google.gson.GsonBuilder
+import com.team2207.roboroute.aoa.AoaSubscribeTrigger
 import com.team2207.roboroute.datastore.Action
 import com.team2207.roboroute.datastore.ActionRepository
 import com.team2207.roboroute.datastore.ActionType
@@ -18,7 +19,6 @@ import com.team2207.roboroute.model.ActionExport
 import com.team2207.roboroute.model.BackupModel
 import com.team2207.roboroute.model.ButtonExport
 import com.team2207.roboroute.model.PoseExport
-import com.team2207.roboroute.serial.AoaSubscribeTrigger
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.first
