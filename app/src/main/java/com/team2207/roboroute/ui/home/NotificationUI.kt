@@ -52,15 +52,16 @@ enum class NotificationLevel {
 @Composable
 fun NotificationView(
     modifier: Modifier = Modifier,
+    id: String = "",
     title: String = notificationTitle,
     description: String = notificationDesc,
     level: NotificationLevel = notificationLevel,
     durationMs: Long = notificationDurationMs,
     onDismiss: () -> Unit = {},
 ) {
-    var remainingMs by remember(durationMs) { mutableLongStateOf(durationMs) }
+    var remainingMs by remember(id, title, description, level, durationMs) { mutableLongStateOf(durationMs) }
 
-    LaunchedEffect(durationMs) {
+    LaunchedEffect(id, title, description, level, durationMs) {
         val startMs = System.currentTimeMillis()
         while (remainingMs > 0) {
             val elapsed = System.currentTimeMillis() - startMs

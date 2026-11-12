@@ -514,6 +514,53 @@ class AoaPoseReceiver(
                 return
             }
 
+            // Handle Robot Notifications
+            if (key.endsWith("RobotNotification") || key.endsWith("RobotNotifications")) {
+                try {
+                    val obj =
+                        when {
+                            valueElement.isJsonObject -> valueElement.asJsonObject
+                            valueElement.isJsonPrimitive && valueElement.asJsonPrimitive.isString -> {
+                                try {
+                                    gson.fromJson(valueElement.asString, JsonObject::class.java)
+                                } catch (_: Exception) {
+                                    null
+                                }
+                            }
+                            else -> null
+                        }
+
+                    if (obj != null) {
+                        val title = obj.get("title")?.asString ?: "Notification"
+                        val description = obj.get("description")?.asString ?: ""
+                        val levelStr = obj.get("level")?.asString?.uppercase() ?: "INFO"
+                        val displayTimeMs =
+                            obj.get("displayTime")?.asLong
+                                ?: obj.get("display_time")?.asLong
+                                ?: ((obj.get("duration")?.asDouble ?: 3.0) * 1000).toLong()
+
+                        val level =
+                            when (levelStr) {
+                                "WARNING" -> NotificationLevel.WARNING
+                                "ERROR" -> NotificationLevel.ERROR
+                                else -> NotificationLevel.INFO
+                            }
+
+                        SerialLogManager.addLog("AOA: Notification received: $title - $description")
+
+                        NotificationManager.postNotification(
+                            title = title,
+                            description = description,
+                            level = level,
+                            durationMs = displayTimeMs,
+                        )
+                    }
+                } catch (e: Exception) {
+                    SerialLogManager.addLog("AOA: Notification parse error: ${e.message}")
+                }
+                return
+            }
+
             if (currentNtPath.isEmpty()) return
 
             val normalizedPath = if (currentNtPath.startsWith("/")) currentNtPath else "/$currentNtPath"
@@ -563,38 +610,6 @@ class AoaPoseReceiver(
                         "Y" -> stageAxis(AXIS_Y, value)
                         "ROTATION", "R", "ROT" -> stageAxis(AXIS_ROTATION, value)
                     }
-                }
-            }
-
-            // Case 3: Robot Notification
-            if (key == "/Elastic/RobotNotification" || key == "/Elastic/RobotNotifications") {
-                try {
-                    if (valueElement.isJsonObject) {
-                        val obj = valueElement.asJsonObject
-                        val title = obj.get("title")?.asString ?: "Notification"
-                        val description = obj.get("description")?.asString ?: ""
-                        val levelStr = obj.get("level")?.asString?.uppercase() ?: "INFO"
-                        val displayTimeMs =
-                            obj.get("displayTime")?.asLong
-                                ?: ((obj.get("duration")?.asDouble ?: 3.0) * 1000).toLong()
-
-                        val level =
-                            when (levelStr) {
-                                "WARNING" -> NotificationLevel.WARNING
-                                "ERROR" -> NotificationLevel.ERROR
-                                else -> NotificationLevel.INFO
-                            }
-
-                        // Post to a NotificationManager state flow
-                        NotificationManager.postNotification(
-                            title = title,
-                            description = description,
-                            level = level,
-                            durationMs = displayTimeMs,
-                        )
-                    }
-                } catch (e: Exception) {
-                    SerialLogManager.addLog("AOA: Notification parse error: ${e.message}")
                 }
             }
         } catch (e: Exception) {

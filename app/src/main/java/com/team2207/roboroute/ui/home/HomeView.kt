@@ -462,6 +462,7 @@ fun MainView(
 
             activeNotification?.let { activeNotif ->
                 NotificationView(
+                    id = activeNotif.id,
                     title = activeNotif.title,
                     description = activeNotif.description,
                     level = activeNotif.level,

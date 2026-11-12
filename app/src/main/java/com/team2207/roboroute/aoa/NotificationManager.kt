@@ -4,8 +4,10 @@ import com.team2207.roboroute.ui.home.NotificationLevel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import java.util.UUID
 
 data class ActiveNotification(
+    val id: String = UUID.randomUUID().toString(),
     val title: String,
     val description: String,
     val level: NotificationLevel,
@@ -22,7 +24,13 @@ object NotificationManager {
         level: NotificationLevel,
         durationMs: Long,
     ) {
-        _current.value = ActiveNotification(title, description, level, durationMs)
+        _current.value =
+            ActiveNotification(
+                title = title,
+                description = description,
+                level = level,
+                durationMs = durationMs,
+            )
     }
 
     fun dismiss() {
