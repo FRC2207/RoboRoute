@@ -13,6 +13,7 @@ import com.google.gson.Gson
 import com.google.gson.JsonObject
 import com.team2207.roboroute.datastore.ActionRepository
 import com.team2207.roboroute.datastore.Pose2d
+import com.team2207.roboroute.ui.home.NotificationLevel
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.cancel
@@ -28,6 +29,7 @@ import java.io.IOException
 import java.io.InputStream
 import java.io.OutputStream
 import java.nio.charset.StandardCharsets
+import kotlin.time.Duration.Companion.milliseconds
 
 object AoaSubscribeTrigger {
     val events = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
@@ -401,7 +403,8 @@ class AoaPoseReceiver(
             // Initial subscriptions
             scope.launch {
                 subscribe(ALLIANCE_PATH)
-                delay(1000)
+                subscribe("/Elastic/RobotNotifications")
+                delay(1000.milliseconds)
                 if (currentNtPath.isNotEmpty()) subscribe(currentNtPath)
             }
         } else {
@@ -560,6 +563,38 @@ class AoaPoseReceiver(
                         "Y" -> stageAxis(AXIS_Y, value)
                         "ROTATION", "R", "ROT" -> stageAxis(AXIS_ROTATION, value)
                     }
+                }
+            }
+
+            // Case 3: Robot Notification
+            if (key == "/Elastic/RobotNotification" || key == "/Elastic/RobotNotifications") {
+                try {
+                    if (valueElement.isJsonObject) {
+                        val obj = valueElement.asJsonObject
+                        val title = obj.get("title")?.asString ?: "Notification"
+                        val description = obj.get("description")?.asString ?: ""
+                        val levelStr = obj.get("level")?.asString?.uppercase() ?: "INFO"
+                        val displayTimeMs =
+                            obj.get("displayTime")?.asLong
+                                ?: ((obj.get("duration")?.asDouble ?: 3.0) * 1000).toLong()
+
+                        val level =
+                            when (levelStr) {
+                                "WARNING" -> NotificationLevel.WARNING
+                                "ERROR" -> NotificationLevel.ERROR
+                                else -> NotificationLevel.INFO
+                            }
+
+                        // Post to a NotificationManager state flow
+                        NotificationManager.postNotification(
+                            title = title,
+                            description = description,
+                            level = level,
+                            durationMs = displayTimeMs,
+                        )
+                    }
+                } catch (e: Exception) {
+                    SerialLogManager.addLog("AOA: Notification parse error: ${e.message}")
                 }
             }
         } catch (e: Exception) {

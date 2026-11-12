@@ -68,6 +68,7 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavController
 import com.team2207.roboroute.R
+import com.team2207.roboroute.aoa.NotificationManager
 import com.team2207.roboroute.datastore.ActionType
 import com.team2207.roboroute.datastore.CustomButton
 import com.team2207.roboroute.ui.action.FIELD_HEIGHT_METERS
@@ -95,6 +96,7 @@ fun MainView(
     modifier: Modifier = Modifier,
     viewModel: HomeViewModel = viewModel(),
 ) {
+    val activeNotification by NotificationManager.current.collectAsState()
     var activeDrawingPoints by remember { mutableStateOf(listOf<Offset>()) }
     val scope = rememberCoroutineScope()
     val routeAlpha = remember { Animatable(1f) }
@@ -457,6 +459,16 @@ fun MainView(
                 initialAction = null,
                 formKey = createSession,
             )
+
+            activeNotification?.let { activeNotif ->
+                NotificationView(
+                    title = activeNotif.title,
+                    description = activeNotif.description,
+                    level = activeNotif.level,
+                    durationMs = activeNotif.durationMs,
+                    onDismiss = { NotificationManager.dismiss() },
+                )
+            }
         }
     }
 }
